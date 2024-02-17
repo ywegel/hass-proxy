@@ -43,7 +43,7 @@ fn load_config() -> Config {
     let config = envy::from_env::<Config>().expect("Failed to deserialize env variables");
     tracing::debug!("Config: {:#?}", config);
 
-    return config;
+    config
 }
 
 async fn index() -> Html<&'static str> {
