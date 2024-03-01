@@ -1,7 +1,20 @@
-use axum::{response::Html, routing::get, Router};
-use serde::Deserialize;
+mod config;
+mod database;
+mod routes;
+
+use axum::http::StatusCode;
+use axum::routing::post;
+use axum::{response::Html, routing::get, Extension, Router};
+use sqlx::postgres::PgPoolOptions;
+use sqlx::PgPool;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use crate::routes::entry::Entry;
+
+#[derive(Clone)]
+struct ApiState {
+    db: PgPool,
+}
 
 #[tokio::main]
 async fn main() {
@@ -13,39 +26,46 @@ async fn main() {
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
-
     tracing::debug!("Tracing initiated");
 
-    let config = load_config();
+    let config = config::load_config();
 
-    let app = Router::new()
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .acquire_timeout(std::time::Duration::from_secs(3))
+        .connect(&config.database_url)
+        .await
+        .expect("Failed to connect to database");
+
+    sqlx::migrate!()
+        .run(&pool)
+        .await
+        .expect("Failed to run database migrations");
+
+    tracing::info!("Connected to database");
+
+    let app = routes::router()
         .route("/", get(index))
+        .route("/hass_dump", post(any_post))
+        .layer(Extension(ApiState { db: pool.clone() }))
         .layer(TraceLayer::new_for_http());
 
     let listener = tokio::net::TcpListener::bind(format!("{}:{}", config.address, config.port))
         .await
         .expect("Failed to bind to address");
 
-    tracing::info!("listening on {}", listener.local_addr().unwrap());
+    tracing::info!("listening on http://{}", listener.local_addr().unwrap());
     axum::serve(listener, app).await.unwrap();
-}
-
-#[derive(Deserialize, Debug, Clone)]
-struct Config {
-    address: String,
-    port: u16,
-}
-
-fn load_config() -> Config {
-    let env_path = dotenvy::dotenv().expect(".env variable should exist in working directory");
-    tracing::info!("Loaded .env successfully from {}", env_path.display());
-
-    let config = envy::from_env::<Config>().expect("Failed to deserialize env variables");
-    tracing::debug!("Config: {:#?}", config);
-
-    config
 }
 
 async fn index() -> Html<&'static str> {
     Html("<h1>Hello, World!</h1>")
+}
+
+async fn any_post(data: String) -> StatusCode {
+    tracing::warn!("Data: {:#?}", data);
+
+    let entry: Entry = serde_json::from_str(&data).unwrap();
+    tracing::error!("Entry: {:#?}", entry);
+    StatusCode::CREATED
 }

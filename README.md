@@ -3,6 +3,33 @@
 This is a simple proxy server that allows you to access data of your Home Assistant 
 instance from outside your network. 
 
+## Home Assistant configuration
+
+
+## Development helpers
+
+### Docker test database 🐋
+
+- Pull newest postgres image 
+    ```` shell
+    docker pull postgres
+    ````
+
+- Create test database
+    ```` shell
+    docker run --name hass_proxy-test-db -e POSTGRES_PASSWORD=mysecretpassword -e POSTGRES_DB=hass_proxy -p 5432:5432 -d postgres
+    ````
+  
+- Add the new database url to the .env file:```postgresql://postgres:mysecretpassword@localhost:5432/mytestdb```
+
+
+
+### sqlx migration shortcut
+To rerun changed migrations, execute the following command:
+```` shell
+    sqlx database drop -y; sqlx database create; sqlx migrate run
+````
+
 ## 🏛️ License
 ```
 HASS-Proxy · A simple proxy server that allows you to access data of 
