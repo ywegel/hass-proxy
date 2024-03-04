@@ -25,9 +25,15 @@ instance from outside your network.
 
 
 ### sqlx migration shortcut
+First install the sqlx-cli:
+```` shell
+cargo install sqlx-cli --no-default-features --features native-tls,postgres
+````
+
+
 To rerun changed migrations, execute the following command:
 ```` shell
-    sqlx database drop -y; sqlx database create; sqlx migrate run
+sqlx database drop -y; sqlx database create; sqlx migrate run
 ````
 
 ## 🏛️ License

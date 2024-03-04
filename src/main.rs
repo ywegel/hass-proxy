@@ -1,15 +1,17 @@
 mod config;
 mod database;
 mod routes;
+mod error;
 
-use axum::http::StatusCode;
+use axum::http::{HeaderValue, StatusCode};
 use axum::routing::post;
-use axum::{response::Html, routing::get, Extension, Router};
+use axum::{response::Html, routing::get, Extension};
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
+use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use crate::routes::entry::Entry;
+use crate::routes::entry::Entity;
 
 #[derive(Clone)]
 struct ApiState {
@@ -44,10 +46,14 @@ async fn main() {
 
     tracing::info!("Connected to database");
 
+    let cors = CorsLayer::new()
+        .allow_origin("http://localhost:5173".parse::<HeaderValue>().unwrap());
+
     let app = routes::router()
         .route("/", get(index))
         .route("/hass_dump", post(any_post))
         .layer(Extension(ApiState { db: pool.clone() }))
+        .layer(cors)
         .layer(TraceLayer::new_for_http());
 
     let listener = tokio::net::TcpListener::bind(format!("{}:{}", config.address, config.port))
@@ -65,7 +71,7 @@ async fn index() -> Html<&'static str> {
 async fn any_post(data: String) -> StatusCode {
     tracing::warn!("Data: {:#?}", data);
 
-    let entry: Entry = serde_json::from_str(&data).unwrap();
+    let entry: Entity = serde_json::from_str(&data).unwrap();
     tracing::error!("Entry: {:#?}", entry);
     StatusCode::CREATED
 }

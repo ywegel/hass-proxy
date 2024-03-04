@@ -1,32 +1,51 @@
 use crate::ApiState;
 use axum::{Extension, Json};
+use axum::extract::Path;
+use axum::response::Result;
 use axum::http::StatusCode;
 use axum_macros::debug_handler;
 use chrono::Utc;
+use crate::error::ResponseError;
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
-pub struct Entry {
-    #[serde(rename = "entity_id")]
+pub struct Entity {
     pub entity_id: String,
     pub state: String,
     pub area: String,
-    #[serde(rename = "utc_timestamp")]
+    #[serde(rename(deserialize = "utc_timestamp"))]
     pub timestamp: chrono::DateTime<Utc>,
 }
 
+pub struct EntityFromDatabase {
+    pub id: i32,
+    pub entity_id: String,
+    pub state: String,
+    pub area: String,
+    pub timestamp: chrono::DateTime<Utc>,
+}
+
+impl From<EntityFromDatabase> for Entity {
+    fn from(value: EntityFromDatabase) -> Self {
+        Entity {
+            entity_id: value.entity_id,
+            state: value.state,
+            area: value.area,
+            timestamp: value.timestamp,
+        }
+    }
+}
+
 #[debug_handler]
-pub async fn post_entry(Extension(state): Extension<ApiState>, Json(data): Json<Entry>) -> StatusCode {
-    let id = format!("{}.{}", data.area, data.entity_id);
-    
+pub async fn post_entity(Extension(state): Extension<ApiState>, Json(data): Json<Entity>) -> StatusCode {
     tracing::debug!("Creating entry: {:?}", data);
 
     sqlx::query_as!(
-        Entry,
+        Entity,
         r#"
         INSERT INTO entries (entity_id, state, area, timestamp)
         VALUES ($1, $2, $3, $4)
         "#,
-        id,
+        data.entity_id,
         data.state,
         data.area,
         data.timestamp,
@@ -35,22 +54,54 @@ pub async fn post_entry(Extension(state): Extension<ApiState>, Json(data): Json<
         .await
         .unwrap();
 
-    tracing::info!("Entry created: {}", id);
+    tracing::info!("Entry created: {}", data.entity_id);
 
     StatusCode::CREATED
 }
 
-pub async fn get_all_entries(Extension(state): Extension<ApiState>) -> Json<Vec<Entry>> {
+pub async fn get_all_entities(Extension(state): Extension<ApiState>) -> Result<Json<Vec<Entity>>, ResponseError> {
     let entries = sqlx::query_as!(
-        Entry,
+        Entity,
         r#"
         SELECT entity_id, state, area, timestamp
         FROM entries
         "#,
     )
         .fetch_all(&state.db)
-        .await
-        .unwrap();
+        .await?;
 
-    Json(entries)
+    Ok(Json(entries))
+}
+
+#[debug_handler]
+pub async fn get_latest_entities(Extension(state): Extension<ApiState>) -> Result<Json<Vec<Entity>>, ResponseError> {
+    let entries = sqlx::query_as!(
+        Entity,
+        r#"
+        SELECT DISTINCT ON (entity_id, area) entity_id, state, area, timestamp
+        FROM entries
+        ORDER BY entity_id, area, timestamp DESC;
+        "#,
+    )
+        .fetch_all(&state.db)
+        .await?;
+
+    Ok(Json(entries))
+}
+
+pub async fn get_entity_by_id(Extension(state): Extension<ApiState>, Path((area, entity_id)): Path<(String, String)>) -> Result<Json<Vec<Entity>>, ResponseError> {
+    let entries = sqlx::query_as!(
+        Entity,
+        r#"
+            SELECT entity_id, state, area, timestamp
+            FROM entries
+            WHERE entity_id = $1 AND area = $2;
+        "#,
+        entity_id,
+        area
+    )
+        .fetch_all(&state.db)
+        .await?;
+
+    Ok(Json(entries))
 }
