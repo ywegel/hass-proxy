@@ -89,11 +89,26 @@ pub async fn get_latest_entities(Extension(state): Extension<ApiState>) -> Resul
     Ok(Json(entries))
 }
 
-pub async fn get_entity_by_id(Extension(state): Extension<ApiState>, Path((area, entity_id)): Path<(String, String)>) -> Result<Json<Vec<Entity>>, ResponseError> {
-    let entries = sqlx::query_as!(
-        Entity,
+#[derive(serde::Serialize)]
+pub struct EntryWithData {
+    pub entity_id: String,
+    pub area: String,
+    pub data: Vec<EntryData>,
+}
+
+#[derive(serde::Serialize)]
+pub struct EntryData {
+    #[serde(rename(serialize = "y"))]
+    pub state: String,
+    #[serde(rename(serialize = "x"))]
+    pub timestamp: chrono::DateTime<Utc>,
+}
+
+pub async fn get_entity_data(Extension(state): Extension<ApiState>, Path((area, entity_id)): Path<(String, String)>) -> Result<Json<EntryWithData>, ResponseError> {
+    let data = sqlx::query_as!(
+        EntryData,
         r#"
-            SELECT entity_id, state, area, timestamp
+            SELECT state, timestamp
             FROM entries
             WHERE entity_id = $1 AND area = $2;
         "#,
@@ -103,5 +118,11 @@ pub async fn get_entity_by_id(Extension(state): Extension<ApiState>, Path((area,
         .fetch_all(&state.db)
         .await?;
 
-    Ok(Json(entries))
+    let entry = EntryWithData {
+        entity_id,
+        area,
+        data,
+    };
+
+    Ok(Json(entry))
 }

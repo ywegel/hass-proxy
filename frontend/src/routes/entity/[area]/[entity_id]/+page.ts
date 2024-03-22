@@ -1,11 +1,27 @@
 import {Entity} from "$lib/models/Entity";
 
-export async function load({fetch, params}): Promise<{ entities: Entity[] }> {
-    const response = await fetch(`http://0.0.0.0:8080/api/enity/${params.area}/${params.entity_id}`);
+class EntityWithData {
+    public entity_id: string | undefined;
+    public area: string | undefined;
+    public data: EntityData[] | undefined;
+
+    constructor(data: Partial<EntityWithData>) {
+        this.entity_id = data.entity_id;
+        this.area = data.area;
+        this.data = data.data;
+    }
+}
+
+class EntityData {
+    state: string | undefined;
+    timestamp: string | undefined;
+}
+
+export async function load({fetch, params}): Promise<{ entityWithData: EntityWithData }> {
+    const response = await fetch(`http://localhost:8080/api/entity/${params.area}/${params.entity_id}`);
     const data = await response.json();
 
-    // Map over the data to create new instances of Entity
-    const entities = data.map((item: any) => new Entity(item));
+    const entityWithData =  new EntityWithData(data);
 
-    return {entities};
+    return {entityWithData};
 }

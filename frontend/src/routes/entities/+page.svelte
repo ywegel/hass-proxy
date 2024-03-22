@@ -2,7 +2,6 @@
     import type {PageData} from "./$types";
     import Time from "svelte-time";
 
-    // Get entities from page load
     export let data: PageData;
     let entities = data.entities;
 </script>
